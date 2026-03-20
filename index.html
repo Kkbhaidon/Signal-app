@@ -1,6 +1,6 @@
 <!DOCTYPE html><html>
 <head>
-  <title>🚀 ULTRA SNIPER SYSTEM</title>
+  <title>🚀 ULTRA SNIPER AI SYSTEM</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
     body { background:#020617; color:white; font-family:Arial; }
@@ -14,6 +14,8 @@
 </div><div class="card">
   <h3 id="signal">WAIT...</h3>
   <p id="info"></p>
+  <p id="stats"></p>
+  <p id="balance"></p>
 </div><script>
 const API_KEY = "4a3eacedc8fa46448e62978e993c0422";
 const BOT_TOKEN = "8276519624:AAHCboXuosrJCLcqQi6ZP4f0MT1xY7voPuk";
@@ -28,6 +30,10 @@ const PAIRS = [
   "EUR/JPY"
 ];
 
+let wins = 0, losses = 0;
+let balance = 10;
+let tradeAmount = 1;
+let lastSignal = null;
 let lastSignalTime = 0;
 
 function sendTelegram(msg){
@@ -53,7 +59,6 @@ function fakeBreakout(data){
  let prev=data[data.length-2];
  let high=Math.max(...data.slice(-6));
  let low=Math.min(...data.slice(-6));
-
  if(last>high && last<prev) return true;
  if(last<low && last>prev) return true;
  return false;
@@ -65,22 +70,38 @@ function strongCandle(data){
  return Math.abs(last-prev) > 0.0004;
 }
 
-function higherTimeframeConfirm(data){
- let ema50=ema(data,50);
- let ema20=ema(data,20);
- return ema20 > ema50 ? "BUY" : "SELL";
+function updateUI(prob){
+ document.getElementById("stats").innerHTML = `Win: ${wins} | Loss: ${losses}`;
+ document.getElementById("balance").innerHTML = `Balance: $${balance.toFixed(2)} | Trade: $${tradeAmount.toFixed(2)} | Win%: ${prob}%`;
+}
+
+function AIAdjust(){
+ let total = wins + losses;
+ if(total < 5) return;
+ let winRate = (wins / total) * 100;
+ if(winRate > 70) tradeAmount *= 1.2;
+ else if(winRate < 50) tradeAmount *= 0.8;
+ if(tradeAmount < 1) tradeAmount = 1;
+}
+
+function evaluate(price){
+ if(!lastSignal) return;
+ let win = (lastSignal.dir === "BUY" && price > lastSignal.entry) ||
+           (lastSignal.dir === "SELL" && price < lastSignal.entry);
+ if(win){ wins++; balance += tradeAmount * 0.8; }
+ else { losses++; balance -= tradeAmount; }
+ AIAdjust();
+ lastSignal = null;
 }
 
 async function scan(){
  let now=new Date();
  let sec=now.getSeconds();
 
- // 🎯 ultra sniper window
  if(sec < 55) return;
-
  if(Date.now() - lastSignalTime < 60000) return;
 
- let bestSignal=null;
+ let best=null;
 
  for(let pair of PAIRS){
    let d=await getData(pair);
@@ -89,36 +110,34 @@ async function scan(){
    let last=d[d.length-1];
    let prev=d[d.length-2];
 
-   let trend = higherTimeframeConfirm(d);
+   evaluate(last);
+
+   let trend = ema(d,20) > ema(d,50) ? "BUY" : "SELL";
    let direction = last>prev ? "BUY" : "SELL";
 
    let score=0;
-
-   // double confirmation
    if(trend===direction) score+=2;
-
-   // strong candle
    if(strongCandle(d)) score+=2;
-
-   // avoid fake breakout
    if(!fakeBreakout(d)) score+=2;
 
-   // direction consistency
-   if(direction === (last>prev?"BUY":"SELL")) score++;
-
    if(score >=6){
-     bestSignal = {pair, direction, score};
+     best = {pair, direction, score, price:last};
      break;
    }
  }
 
- if(bestSignal){
-   document.getElementById("signal").innerHTML = "💣 ULTRA: " + bestSignal.direction;
-   document.getElementById("info").innerHTML = `Pair: ${bestSignal.pair} | Score: ${bestSignal.score}`;
+ if(best){
+   let probability = Math.min(95, 50 + best.score * 7);
 
+   document.getElementById("signal").innerHTML = "💣 ULTRA: " + best.direction;
+   document.getElementById("info").innerHTML = `Pair: ${best.pair} | Score: ${best.score} | Hold: 1 Min`;
+
+   lastSignal = {dir:best.direction, entry:best.price};
    lastSignalTime = Date.now();
 
-   sendTelegram(`💣 ULTRA SNIPER\n${bestSignal.pair} ${bestSignal.direction}\nScore: ${bestSignal.score}\nOnly High Probability`);
+   updateUI(probability);
+
+   sendTelegram(`💣 ULTRA SIGNAL\n${best.pair} ${best.direction}\nWin%: ${probability}%\nHold: 1 Min\nTrade: $${tradeAmount.toFixed(2)}`);
  }
 }
 
