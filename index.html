@@ -1,95 +1,72 @@
 <!DOCTYPE html><html>
 <head>
-  <title>💣 STABLE AI SIGNAL SYSTEM</title>
+  <title>Simple Smart Signal</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
-    body {margin:0;font-family:Arial;background:#020617;color:white}
-    .container {padding:15px}
-    .card {background:#0f172a;padding:15px;border-radius:12px;margin-bottom:10px}
-    .big {font-size:40px;font-weight:bold}
-    .pair {font-size:26px;color:#38bdf8}
-    button {width:100%;padding:12px;border:none;border-radius:10px;background:#22c55e;color:white}
+    body {margin:0;font-family:Arial;background:#020617;color:white;text-align:center}
+    .box {margin-top:100px}
+    .signal {font-size:44px;font-weight:bold}
+    .pair {font-size:26px;color:#38bdf8;margin-top:10px}
+    .info {margin-top:10px;color:#94a3b8}
+    button {margin-top:20px;padding:12px 20px;border:none;border-radius:10px;background:#22c55e;color:white;font-size:16px}
   </style>
 </head>
-<body><div class="container"><div class="card">
-  <button onclick="start()">🚀 Start Stable System</button>
-</div><div class="card">
-  <div id="signal" class="big">WAIT...</div>
+<body><div class="box">
+  <div id="signal" class="signal">WAIT</div>
   <div id="pair" class="pair"></div>
-  <div id="prob"></div>
-</div></div><script>
+  <div id="info" class="info"></div>
+  <button onclick="start()">START</button>
+</div><script>
 const API_KEY = "4a3eacedc8fa46448e62978e993c0422";
-const BOT_TOKEN = "8276519624:AAHCboXuosrJCLcqQi6ZP4f0MT1xY7voPuk";
-const CHAT_ID = "741726963";
 
 const PAIRS = ["EUR/USD","GBP/USD","USD/JPY","AUD/USD","USD/CAD","EUR/JPY"];
-
-function sendTelegram(msg){
- fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage?chat_id=${CHAT_ID}&text=${encodeURIComponent(msg)}`);
-}
-
-function speak(text){
- const msg = new SpeechSynthesisUtterance(text);
- msg.lang = 'en-US';
- window.speechSynthesis.cancel();
- window.speechSynthesis.speak(msg);
-}
+let running = false;
+let pairIndex = 0;
 
 async function getData(pair){
- let res = await fetch(`https://api.twelvedata.com/time_series?symbol=${pair}&interval=1min&outputsize=20&apikey=${API_KEY}`);
- let data = await res.json();
- if(!data.values) return null;
- return data.values.reverse().map(v=>parseFloat(v.close));
+  let res = await fetch(`https://api.twelvedata.com/time_series?symbol=${pair}&interval=1min&outputsize=20&apikey=${API_KEY}`);
+  let data = await res.json();
+  if(!data.values) return null;
+  return data.values.reverse().map(v=>parseFloat(v.close));
 }
 
 function ema(data,p){
- let k=2/(p+1),e=data[0];
- for(let i=1;i<data.length;i++) e=data[i]*k+e*(1-k);
- return e;
+  let k=2/(p+1), e=data[0];
+  for(let i=1;i<data.length;i++) e=data[i]*k + e*(1-k);
+  return e;
 }
 
 async function scan(){
- let sec = new Date().getSeconds();
- if(sec>20) return; // wider window
+  // rotate pairs (random nahi, stable)
+  let pair = PAIRS[pairIndex % PAIRS.length];
+  pairIndex++;
 
- let best=null;
- let bestScore = -1;
-
- for(let pair of PAIRS){
   let d = await getData(pair);
-  if(!d) continue;
+  if(!d) return;
 
-  let last=d[d.length-1];
-  let prev=d[d.length-2];
+  let last = d[d.length-1];
+  let prev = d[d.length-2];
 
-  let trend = ema(d,10)>ema(d,20)?"BUY":"SELL";
-  let dir = last>prev?"BUY":"SELL";
+  // simple + smart logic
+  let trend = ema(d,10) > ema(d,20) ? "BUY" : "SELL";
+  let moveStrong = Math.abs(last - prev) > 0.0002;
+  let dir = last > prev ? "BUY" : "SELL";
 
-  let score=0;
+  // decision
+  let final = (trend === dir && moveStrong) ? dir : trend; // fallback = trend
 
-  if(trend===dir) score+=1;
-  if(Math.abs(last-prev)>0.0002) score+=1;
-
-  if(score > bestScore){
-    bestScore = score;
-    best={pair,dir,score};
-  }
- }
-
- if(!best) return;
-
- let prob = 65 + best.score*20; // boosted accuracy
-
- document.getElementById("signal").innerHTML = best.dir;
- document.getElementById("pair").innerHTML = best.pair;
- document.getElementById("prob").innerHTML = "Win%: "+prob+"%";
-
- sendTelegram(`💣 SIGNAL\n${best.pair} ${best.dir}\nWin%:${prob}%`);
- speak(`${best.pair.replace('/',' ')} ${best.dir==='BUY'?'UP':'DOWN'}`);
+  document.getElementById("signal").innerHTML = final;
+  document.getElementById("pair").innerHTML = pair;
+  document.getElementById("info").innerHTML = moveStrong ? "Strong move" : "Normal";
 }
 
 function start(){
- setInterval(scan,1000);
+  if(running) return;
+  running = true;
+
+  // run every new minute approx
+  setInterval(scan,60000);
+  scan();
 }
 </script></body>
 </html>
