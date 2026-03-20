@@ -1,20 +1,25 @@
 <!DOCTYPE html><html>
 <head>
-  <title>💀 INSTITUTIONAL AI PRO DASHBOARD</title>
+  <title>💀 DUAL MODE INSTITUTIONAL DASHBOARD</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
     body {margin:0;font-family:Arial;background:linear-gradient(135deg,#020617,#0f172a);color:white}
-    .header {padding:15px;text-align:center;font-size:22px;background:#020617;border-bottom:1px solid #1e293b}
+    .header {padding:15px;text-align:center;font-size:22px;border-bottom:1px solid #1e293b}
     .container {padding:15px;display:grid;gap:15px}
     .card {background:#0f172a;padding:15px;border-radius:16px;box-shadow:0 0 20px rgba(0,0,0,0.6)}
     .big {font-size:40px;font-weight:bold;letter-spacing:2px}
     .pair {font-size:28px;font-weight:bold;color:#38bdf8}
-    button {width:100%;padding:12px;border:none;border-radius:12px;background:linear-gradient(90deg,#22c55e,#16a34a);color:white;font-size:16px}
+    button {width:100%;padding:12px;border:none;border-radius:12px;margin-top:5px;color:white}
+    .green {background:#22c55e}
+    .blue {background:#3b82f6}
     .row {display:flex;justify-content:space-between;margin-top:5px}
   </style>
 </head>
-<body><div class="header">💀 INSTITUTIONAL AI DASHBOARD</div><div class="container"><div class="card">
-  <button onclick="start()">🚀 Start Trading Engine</button>
+<body><div class="header">💀 DUAL MODE AI TRADING TERMINAL</div><div class="container"><div class="card">
+  <button class="green" onclick="setMode('simple')">🟢 Simple Mode</button>
+  <button class="blue" onclick="setMode('pro')">🔴 Institutional Mode</button>
+</div><div class="card">
+  <div id="mode">Mode: SIMPLE</div>
 </div><div class="card">
   <div id="signal" class="big">WAIT...</div>
   <div id="pair" class="pair"></div>
@@ -26,10 +31,6 @@
   <div class="row"><span>✅ Wins</span><span id="wins">0</span></div>
   <div class="row"><span>❌ Loss</span><span id="losses">0</span></div>
 </div><div class="card">
-  <button onclick="manualWin()">✅ Mark WIN</button>
-  <button onclick="manualLoss()" style="margin-top:10px;background:#ef4444">❌ Mark LOSS</button>
-  <div class="row" style="margin-top:10px"><span>💰 Next Amount</span><span id="nextAmt">1$</span></div>
-</div><div class="card">
   <div><b>📜 History</b></div>
   <div id="history"></div>
 </div></div><script>
@@ -39,11 +40,10 @@ const CHAT_ID = "741726963";
 
 const PAIRS = ["EUR/USD","GBP/USD","USD/JPY","AUD/USD","USD/CAD","EUR/JPY"];
 
-// 🔥 Persistent Data
+let mode = localStorage.getItem("mode") || "simple";
 let wins = parseInt(localStorage.getItem("wins") || 0);
 let losses = parseInt(localStorage.getItem("losses") || 0);
 let history = JSON.parse(localStorage.getItem("history") || "[]");
-let baseAmount = parseFloat(localStorage.getItem("amount") || 1);
 
 let lastSignal=null;
 let timerInt;
@@ -52,6 +52,14 @@ let countdown=60;
 function sendTelegram(msg){
  fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage?chat_id=${CHAT_ID}&text=${encodeURIComponent(msg)}`);
 }
+
+function setMode(m){
+ mode = m;
+ localStorage.setItem("mode", m);
+ document.getElementById("mode").innerHTML = "Mode: " + m.toUpperCase();
+}
+
+document.getElementById("mode").innerHTML = "Mode: " + mode.toUpperCase();
 
 async function getData(pair){
  let res=await fetch(`https://api.twelvedata.com/time_series?symbol=${pair}&interval=1min&outputsize=50&apikey=${API_KEY}`);
@@ -79,31 +87,6 @@ function startTimer(){
  },1000);
 }
 
-function updateAmount(){
- let total = wins + losses;
- let winrate = total ? (wins/total)*100 : 50;
-
- if(winrate > 70) baseAmount *= 1.2;
- else if(winrate < 50) baseAmount *= 1.5;
-
- if(baseAmount < 1) baseAmount = 1;
-
- localStorage.setItem("amount", baseAmount);
- document.getElementById("nextAmt").innerHTML = baseAmount.toFixed(2)+"$";
-}
-
-function manualWin(){
- wins++;
- localStorage.setItem("wins", wins);
- updateAmount();
-}
-
-function manualLoss(){
- losses++;
- localStorage.setItem("losses", losses);
- updateAmount();
-}
-
 async function checkResult(){
  if(!lastSignal) return;
 
@@ -115,8 +98,7 @@ async function checkResult(){
  let win=(lastSignal.dir==="BUY" && latest>lastSignal.entry)||
          (lastSignal.dir==="SELL" && latest<lastSignal.entry);
 
- if(win){wins++;}
- else{losses++;}
+ if(win){wins++;} else {losses++;}
 
  localStorage.setItem("wins", wins);
  localStorage.setItem("losses", losses);
@@ -126,12 +108,13 @@ async function checkResult(){
  localStorage.setItem("history", JSON.stringify(history));
 
  lastSignal=null;
- updateAmount();
 }
 
 function renderHistory(){
  let h = JSON.parse(localStorage.getItem("history") || "[]");
  document.getElementById("history").innerHTML = h.slice().reverse().map(x=>`<div>${x}</div>`).join("");
+ document.getElementById("wins").innerHTML=wins;
+ document.getElementById("losses").innerHTML=losses;
 }
 
 async function scan(){
@@ -147,14 +130,21 @@ async function scan(){
   let last=d[d.length-1];
   let prev=d[d.length-2];
 
-  let trend=ema(d,10)>ema(d,20)?"BUY":"SELL";
-  let dir=last>prev?"BUY":"SELL";
+  let dir,score=0;
 
-  let score=0;
-  if(trend===dir) score+=2;
-  if(Math.abs(last-prev)>0.0002) score+=2;
+  if(mode==="simple"){
+    let trend=ema(d,10)>ema(d,20)?"BUY":"SELL";
+    dir=last>prev?"BUY":"SELL";
+    if(trend===dir) score+=2;
+    if(Math.abs(last-prev)>0.0002) score+=2;
+  } else {
+    let trend=ema(d,20)>ema(d,50)?"BUY":"SELL";
+    dir=last>prev?"BUY":"SELL";
+    if(trend===dir) score+=2;
+    if(Math.abs(last-prev)>0.0003) score+=2;
+  }
 
-  if(score>=5){
+  if(score>=4){
     if(!best || score>best.score){
       best={pair,dir,score,entry:last};
     }
@@ -171,22 +161,32 @@ async function scan(){
 
   lastSignal=best;
 
-  sendTelegram(`💀 AI SIGNAL\n${best.pair} ${best.dir}\nWin%:${prob}%`);
+  sendTelegram(`💀 ${mode.toUpperCase()} SIGNAL\n${best.pair} ${best.dir}\nWin%:${prob}%`);
+
+  // 🔊 Speak signal
+  speak(`${best.pair.replace('/', ' ')} ${best.dir === 'BUY' ? 'UP' : 'DOWN'}`);
 
   startTimer();
  }
 }
 
 function start(){
- document.getElementById("wins").innerHTML=wins;
- document.getElementById("losses").innerHTML=losses;
- updateAmount();
  renderHistory();
-
  setInterval(()=>{
   scan();
   renderHistory();
  },1000);
 }
+// 🔊 Voice Alert
+function speak(text){
+  try{
+    const msg = new SpeechSynthesisUtterance(text);
+    msg.lang = 'en-US';
+    msg.rate = 1;
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(msg);
+  }catch(e){}
+}
+
 </script></body>
 </html>
