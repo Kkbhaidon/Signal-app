@@ -1,130 +1,102 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>🚀 SNIPER PRO MAX SYSTEM</title>
+  <title>🔥 Stable Signal System</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
-    body { background:#020617; color:white; font-family:Arial; }
-    .card { background:#0f172a; padding:15px; margin:10px; border-radius:10px; }
-    .buy { color:#22c55e; }
-    .sell { color:#ef4444; }
+    body {margin:0;font-family:Arial;background:#020617;color:white;text-align:center}
+    .box {margin-top:100px}
+    .signal {font-size:48px;font-weight:bold}
+    .pair {font-size:28px;color:#38bdf8;margin-top:10px}
+    .info {margin-top:10px;color:#94a3b8}
+    button {margin-top:20px;padding:12px 20px;border:none;border-radius:10px;background:#22c55e;color:white;font-size:16px}
   </style>
 </head>
 <body>
 
-<div class="card">
-  <button onclick="start()">🔥 Start Sniper Mode</button>
-</div>
-
-<div class="card">
-  <h3 id="signal">WAIT...</h3>
-  <p id="info"></p>
+<div class="box">
+  <div id="signal" class="signal">WAIT</div>
+  <div id="pair" class="pair"></div>
+  <div id="info" class="info"></div>
+  <button onclick="start()">START</button>
 </div>
 
 <script>
 const API_KEY = "4a3eacedc8fa46448e62978e993c0422";
+const PAIRS = ["EUR/USD","GBP/USD","USD/JPY","AUD/USD","USD/CAD","EUR/JPY"];
 
-// 🔔 TELEGRAM (already added)
-const BOT_TOKEN = "8276519624:AAHCboXuosrJCLcqQi6ZP4f0MT1xY7voPuk";
-const CHAT_ID = "741726963";
-
-// 🎯 ONLY 6 FOREX PAIRS
-const PAIRS = [
-  "EUR/USD",
-  "GBP/USD",
-  "USD/JPY",
-  "AUD/USD",
-  "USD/CAD",
-  "EUR/JPY"
-];
-
-let lastSignalTime = 0;
-
-function sendTelegram(msg){
- fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage?chat_id=${CHAT_ID}&text=${encodeURIComponent(msg)}`);
-}
+let running = false;
 
 async function getData(pair){
- let url = `https://api.twelvedata.com/time_series?symbol=${pair}&interval=1min&outputsize=50&apikey=${API_KEY}`;
- let res = await fetch(url);
- let data = await res.json();
- if(!data.values) return null;
- return data.values.reverse().map(v=>parseFloat(v.close));
+  try{
+    let res = await fetch(`https://api.twelvedata.com/time_series?symbol=${pair}&interval=1min&outputsize=10&apikey=${API_KEY}`);
+    let data = await res.json();
+    if(!data.values) return null;
+    return data.values.reverse().map(v=>parseFloat(v.close));
+  }catch(e){
+    return null;
+  }
 }
 
 function ema(data,p){
- let k=2/(p+1), e=data[0];
- for(let i=1;i<data.length;i++) e=data[i]*k+e*(1-k);
- return e;
-}
-
-// 🔥 Fake breakout filter
-function fakeBreakout(data){
- let last=data[data.length-1];
- let prev=data[data.length-2];
-
- let high=Math.max(...data.slice(-5));
- let low=Math.min(...data.slice(-5));
-
- if(last>high && last<prev) return "SELL";
- if(last<low && last>prev) return "BUY";
-
- return null;
+  let k=2/(p+1), e=data[0];
+  for(let i=1;i<data.length;i++) e=data[i]*k + e*(1-k);
+  return e;
 }
 
 async function scan(){
- let now=new Date();
- let sec=now.getSeconds();
+  let best = null;
 
- // 🎯 ONLY LAST 5 SECONDS
- if(sec < 55) return;
+  for(let pair of PAIRS){
+    let d = await getData(pair);
+    if(!d) continue;
 
- // ⛔ duplicate signals avoid
- if(Date.now() - lastSignalTime < 60000) return;
+    let last = d[d.length-1];
+    let prev = d[d.length-2];
 
- for(let pair of PAIRS){
-   let d=await getData(pair);
-   if(!d) continue;
+    let trend = ema(d,10) > ema(d,20) ? "BUY" : "SELL";
+    let dir = last > prev ? "BUY" : "SELL";
 
-   let last=d[d.length-1];
-   let prev=d[d.length-2];
+    let score = 0;
 
-   let e20=ema(d,20);
-   let e50=ema(d,50);
+    if(trend === dir) score += 2;
+    if(Math.abs(last - prev) > 0.0002) score += 1;
 
-   let trend=e20>e50 ? "BUY" : "SELL";
-   let momentum=Math.abs(last-prev);
-   let fake=fakeBreakout(d);
+    if(!best || score > best.score){
+      best = {pair, dir, score};
+    }
+  }
 
-   let score=0;
+  // 🔥 fallback (never blank)
+  if(!best){
+    let pair = "EUR/USD";
+    let d = await getData(pair);
+    if(!d) return;
 
-   // 🔥 Double confirmation
-   if(trend==="BUY" && last>prev) score++;
-   if(trend==="SELL" && last<prev) score++;
+    let last = d[d.length-1];
+    let prev = d[d.length-2];
 
-   // ⚡ Momentum filter
-   if(momentum > 0.0003) score++;
+    best = {
+      pair,
+      dir: last > prev ? "BUY" : "SELL",
+      score: 1
+    };
+  }
 
-   // 🚫 Fake breakout filter
-   if(!fake) score++;
+  let strength = best.score >= 3 ? "🔥 STRONG" : "⚡ NORMAL";
 
-   // 🎯 FINAL SNIPER CONDITION
-   if(score >= 3){
-
-     document.getElementById("signal").innerHTML="🎯 SNIPER: "+trend;
-     document.getElementById("info").innerHTML=`Pair: ${pair} | Score: ${score}`;
-
-     lastSignalTime = Date.now();
-
-     sendTelegram(`🎯 SNIPER SIGNAL\n${pair} ${trend}\nScore: ${score}\nEntry: Next Candle`);
-
-     return;
-   }
- }
+  document.getElementById("signal").innerHTML = best.dir;
+  document.getElementById("pair").innerHTML = best.pair;
+  document.getElementById("info").innerHTML = strength;
 }
 
 function start(){
- setInterval(scan,1000);
+  if(running) return;
+  running = true;
+
+  // 🔥 run every 10 sec (better than 1 min)
+  setInterval(scan,10000);
+  scan();
 }
 </script>
 
