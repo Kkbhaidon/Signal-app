@@ -1,55 +1,42 @@
 <!DOCTYPE html><html>
 <head>
-  <title>🚀 ULTRA SNIPER PRO DASHBOARD</title>
+  <title>🤖 AI Trading Dashboard</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
-    body {margin:0;font-family:Arial;background:linear-gradient(135deg,#020617,#0f172a);color:white;}
-    .header {padding:15px;text-align:center;font-size:22px;background:#020617;border-bottom:1px solid #1e293b;}
-    .container {padding:15px;display:grid;gap:15px;}
-    .card {background:#0f172a;padding:15px;border-radius:15px;box-shadow:0 0 20px rgba(0,0,0,0.5);}
-    .big {font-size:28px;font-weight:bold;}
-    .buy { color:#22c55e; }
-    .sell { color:#ef4444; }
-    button {width:100%;padding:12px;border:none;border-radius:12px;background:linear-gradient(90deg,#22c55e,#16a34a);color:white;font-size:16px;}
-    .row {display:flex;justify-content:space-between;margin-top:5px;}
+    body { background:#020617; color:white; font-family:Arial; margin:0; }
+    .container { padding:15px; }
+    .card { background:#0f172a; padding:15px; border-radius:12px; margin-bottom:10px; }
+    .big { font-size:24px; font-weight:bold; }
   </style>
 </head>
-<body><div class="header">🚀 ULTRA SNIPER DASHBOARD</div><div class="container"><div class="card">
-  <button onclick="start()">💣 Start Trading Engine</button>
+<body><div class="container"><div class="card">
+  <button onclick="start()">🚀 Start AI System</button>
 </div><div class="card">
   <div id="signal" class="big">WAIT...</div>
   <div id="pair"></div>
-</div><div class="card">
-  <div class="row"><span>🎯 Score</span><span id="score">-</span></div>
-  <div class="row"><span>📊 Win %</span><span id="prob">-</span></div>
-  <div class="row"><span>⏱ Timer</span><span id="timer">-</span></div>
-</div><div class="card">
-  <div class="row"><span>✅ Wins</span><span id="wins">0</span></div>
-  <div class="row"><span>❌ Loss</span><span id="losses">0</span></div>
-</div><div class="card">
-  <div class="row"><span>💰 Balance</span><span id="balance">$10</span></div>
-  <div class="row"><span>⚡ Trade</span><span id="trade">$1</span></div>
+  <div id="prob"></div>
+  <div id="stats"></div>
 </div></div><script>
 const API_KEY = "4a3eacedc8fa46448e62978e993c0422";
+
+// 🔔 TELEGRAM AUTO CONNECT
 const BOT_TOKEN = "8276519624:AAHCboXuosrJCLcqQi6ZP4f0MT1xY7voPuk";
 const CHAT_ID = "741726963";
 
-const PAIRS = ["EUR/USD","GBP/USD","USD/JPY","AUD/USD","USD/CAD","EUR/JPY"];
-
-let wins=0, losses=0;
-let balance=10;
-let trade=1;
-let lastSignal=null;
-let lastTime=0;
-let countdown=0;
-let timerInt;
-
 function sendTelegram(msg){
- fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage?chat_id=${CHAT_ID}&text=${encodeURIComponent(msg)}`);
+  fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage?chat_id=${CHAT_ID}&text=${encodeURIComponent(msg)}`);
 }
 
+const PAIRS = ["EUR/USD","GBP/USD","USD/JPY","AUD/USD","USD/CAD","EUR/JPY"];
+
+let wins = 0, losses = 0;
+let pairStats = {};
+let lastSignal = null;
+
+PAIRS.forEach(p => pairStats[p] = {win:0, loss:0});
+
 async function getData(pair){
- let res = await fetch(`https://api.twelvedata.com/time_series?symbol=${pair}&interval=1min&outputsize=50&apikey=${API_KEY}`);
+ let res = await fetch(`https://api.twelvedata.com/time_series?symbol=${pair}&interval=1min&outputsize=20&apikey=${API_KEY}`);
  let data = await res.json();
  if(!data.values) return null;
  return data.values.reverse().map(v=>parseFloat(v.close));
@@ -61,81 +48,85 @@ function ema(data,p){
  return e;
 }
 
-function strong(data){
- let a=data[data.length-1];
- let b=data[data.length-2];
- return Math.abs(a-b)>0.0003;
+function pairAccuracy(pair){
+ let s = pairStats[pair];
+ let total = s.win + s.loss;
+ if(total===0) return 50;
+ return (s.win/total)*100;
 }
 
-function startTimer(){
- countdown=60;
- clearInterval(timerInt);
- timerInt=setInterval(()=>{
-  countdown--;
-  document.getElementById("timer").innerHTML = countdown+"s";
-  if(countdown<=0){
-    clearInterval(timerInt);
-    checkResult();
-  }
- },1000);
+function updateUI(pair,dir,prob,acc){
+ document.getElementById("signal").innerHTML = dir;
+ document.getElementById("pair").innerHTML = pair;
+ document.getElementById("prob").innerHTML = `Win%: ${prob}% | Pair Acc: ${acc.toFixed(1)}%`;
+
+ let total = wins+losses;
+ let overall = total? (wins/total*100).toFixed(1):0;
+
+ document.getElementById("stats").innerHTML = `Win: ${wins} | Loss: ${losses} | Acc: ${overall}%`;
 }
 
 async function checkResult(){
  if(!lastSignal) return;
- let d=await getData(lastSignal.pair);
+
+ let d = await getData(lastSignal.pair);
  if(!d) return;
- let latest=d[d.length-1];
 
- let win=(lastSignal.dir==="BUY" && latest>lastSignal.entry) ||
-         (lastSignal.dir==="SELL" && latest<lastSignal.entry);
+ let latest = d[d.length-1];
 
- if(win){ wins++; balance+=trade*0.8; }
- else { losses++; balance-=trade; }
+ let win = (lastSignal.dir==="BUY" && latest>lastSignal.entry) ||
+           (lastSignal.dir==="SELL" && latest<lastSignal.entry);
 
- document.getElementById("wins").innerHTML=wins;
- document.getElementById("losses").innerHTML=losses;
- document.getElementById("balance").innerHTML="$"+balance.toFixed(2);
+ if(win){
+   wins++;
+   pairStats[lastSignal.pair].win++;
+ }else{
+   losses++;
+   pairStats[lastSignal.pair].loss++;
+ }
 
- lastSignal=null;
+ lastSignal = null;
 }
 
 async function scan(){
- let sec=new Date().getSeconds();
- if(sec<55) return;
- if(Date.now()-lastTime<60000) return;
+ let sec = new Date().getSeconds();
+
+ if(sec===59) await checkResult();
+
+ if(sec!==0) return;
+
+ let best=null;
 
  for(let pair of PAIRS){
-  let d=await getData(pair);
-  if(!d) continue;
+   let d = await getData(pair);
+   if(!d) continue;
 
-  let last=d[d.length-1];
-  let prev=d[d.length-2];
+   let last=d[d.length-1];
+   let prev=d[d.length-2];
 
-  let trend = ema(d,20)>ema(d,50)?"BUY":"SELL";
-  let dir = last>prev?"BUY":"SELL";
+   let trend = ema(d,10)>ema(d,20)?"BUY":"SELL";
+   let dir = last>prev?"BUY":"SELL";
 
-  let score=0;
-  if(trend===dir) score+=2;
-  if(strong(d)) score+=2;
+   let score=0;
+   if(trend===dir) score+=2;
+   if(Math.abs(last-prev)>0.0002) score+=1;
 
-  if(score>=4){
+   let acc = pairAccuracy(pair);
 
-    let prob=Math.min(95,50+score*8);
+   if(acc>70) score+=2;
+   else if(acc>60) score+=1;
 
-    document.getElementById("signal").innerHTML = dir==="BUY"?"🟢 BUY":"🔴 SELL";
-    document.getElementById("pair").innerHTML = pair;
-    document.getElementById("score").innerHTML = score;
-    document.getElementById("prob").innerHTML = prob+"%";
+   if(!best || score>best.score){
+     best = {pair,dir,score,entry:last,acc};
+   }
+ }
 
-    lastSignal={dir:dir,entry:last,pair:pair};
-    lastTime=Date.now();
+ if(best){
+   let prob = Math.min(95, 50 + best.score*10);
 
-    sendTelegram(`💣 SIGNAL\n${pair} ${dir}\nWin%:${prob}%\nTrade:$${trade}`);
+   updateUI(best.pair,best.dir,prob,best.acc);
 
-    startTimer();
-
-    return;
-  }
+   lastSignal = best;
  }
 }
 
