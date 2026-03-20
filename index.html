@@ -1,65 +1,17 @@
 <!DOCTYPE html><html>
 <head>
-  <title>💣 ULTRA SNIPER PRO DASHBOARD</title>
+  <title>🚀 ULTRA SNIPER PRO DASHBOARD</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
-    body {
-      margin:0;
-      font-family:Arial;
-      background:linear-gradient(135deg,#020617,#0f172a);
-      color:white;
-    }.header {
-  padding:15px;
-  text-align:center;
-  font-size:22px;
-  background:#020617;
-  border-bottom:1px solid #1e293b;
-}
-
-.container {
-  padding:15px;
-  display:grid;
-  gap:15px;
-}
-
-.card {
-  background:#0f172a;
-  padding:15px;
-  border-radius:15px;
-  box-shadow:0 0 20px rgba(0,0,0,0.5);
-}
-
-.big {
-  font-size:28px;
-  font-weight:bold;
-}
-
-.buy { color:#22c55e; }
-.sell { color:#ef4444; }
-
-button {
-  width:100%;
-  padding:12px;
-  border:none;
-  border-radius:12px;
-  background:linear-gradient(90deg,#22c55e,#16a34a);
-  color:white;
-  font-size:16px;
-}
-
-.row {
-  display:flex;
-  justify-content:space-between;
-  margin-top:5px;
-}
-
-.tag {
-  padding:5px 10px;
-  border-radius:8px;
-  background:#1e293b;
-  font-size:12px;
-}
-
+    body {margin:0;font-family:Arial;background:linear-gradient(135deg,#020617,#0f172a);color:white;}
+    .header {padding:15px;text-align:center;font-size:22px;background:#020617;border-bottom:1px solid #1e293b;}
+    .container {padding:15px;display:grid;gap:15px;}
+    .card {background:#0f172a;padding:15px;border-radius:15px;box-shadow:0 0 20px rgba(0,0,0,0.5);}
+    .big {font-size:28px;font-weight:bold;}
+    .buy { color:#22c55e; }
+    .sell { color:#ef4444; }
+    button {width:100%;padding:12px;border:none;border-radius:12px;background:linear-gradient(90deg,#22c55e,#16a34a);color:white;font-size:16px;}
+    .row {display:flex;justify-content:space-between;margin-top:5px;}
   </style>
 </head>
 <body><div class="header">🚀 ULTRA SNIPER DASHBOARD</div><div class="container"><div class="card">
@@ -70,7 +22,7 @@ button {
 </div><div class="card">
   <div class="row"><span>🎯 Score</span><span id="score">-</span></div>
   <div class="row"><span>📊 Win %</span><span id="prob">-</span></div>
-  <div class="row"><span>⏱ Hold</span><span>1 Min</span></div>
+  <div class="row"><span>⏱ Timer</span><span id="timer">-</span></div>
 </div><div class="card">
   <div class="row"><span>✅ Wins</span><span id="wins">0</span></div>
   <div class="row"><span>❌ Loss</span><span id="losses">0</span></div>
@@ -89,6 +41,8 @@ let balance=10;
 let trade=1;
 let lastSignal=null;
 let lastTime=0;
+let countdown=0;
+let timerInt;
 
 function sendTelegram(msg){
  fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage?chat_id=${CHAT_ID}&text=${encodeURIComponent(msg)}`);
@@ -111,6 +65,38 @@ function strong(data){
  let a=data[data.length-1];
  let b=data[data.length-2];
  return Math.abs(a-b)>0.0003;
+}
+
+function startTimer(){
+ countdown=60;
+ clearInterval(timerInt);
+ timerInt=setInterval(()=>{
+  countdown--;
+  document.getElementById("timer").innerHTML = countdown+"s";
+  if(countdown<=0){
+    clearInterval(timerInt);
+    checkResult();
+  }
+ },1000);
+}
+
+async function checkResult(){
+ if(!lastSignal) return;
+ let d=await getData(lastSignal.pair);
+ if(!d) return;
+ let latest=d[d.length-1];
+
+ let win=(lastSignal.dir==="BUY" && latest>lastSignal.entry) ||
+         (lastSignal.dir==="SELL" && latest<lastSignal.entry);
+
+ if(win){ wins++; balance+=trade*0.8; }
+ else { losses++; balance-=trade; }
+
+ document.getElementById("wins").innerHTML=wins;
+ document.getElementById("losses").innerHTML=losses;
+ document.getElementById("balance").innerHTML="$"+balance.toFixed(2);
+
+ lastSignal=null;
 }
 
 async function scan(){
@@ -141,10 +127,12 @@ async function scan(){
     document.getElementById("score").innerHTML = score;
     document.getElementById("prob").innerHTML = prob+"%";
 
-    lastSignal={dir:dir,entry:last};
+    lastSignal={dir:dir,entry:last,pair:pair};
     lastTime=Date.now();
 
     sendTelegram(`💣 SIGNAL\n${pair} ${dir}\nWin%:${prob}%\nTrade:$${trade}`);
+
+    startTimer();
 
     return;
   }
