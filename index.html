@@ -1,39 +1,43 @@
 <!DOCTYPE html><html>
 <head>
-  <title>💣 ULTIMATE PRO+ SIGNAL ENGINE</title>
+  <title>🚀 PRO TRADING DASHBOARD</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
-    body { font-family: Arial; text-align:center; background:#020617; color:white; }
-    .box { margin-top:20px; padding:20px; border-radius:15px; background:#0f172a; }
-    button, select { padding:10px; margin:5px; border-radius:10px; }
-    .buy { color:#22c55e; font-size:26px; }
-    .sell { color:#ef4444; font-size:26px; }
-    .neutral { color:#eab308; }
+    body { background:#020617; color:white; font-family:Arial; margin:0; }
+    .header { padding:15px; background:#0f172a; text-align:center; font-size:20px; }
+    .container { padding:15px; }
+    .card { background:#0f172a; padding:15px; margin-bottom:10px; border-radius:12px; }
+    .buy { color:#22c55e; font-size:22px; }
+    .sell { color:#ef4444; font-size:22px; }
+    .wait { color:#eab308; }
+    button, select { padding:10px; border-radius:8px; margin:5px; }
   </style>
 </head>
-<body><h2>🚀 ULTIMATE PRO+ FOREX AI SIGNAL</h2><div class="box">
+<body><div class="header">💣 PRO+ TRADING DASHBOARD</div><div class="container"><div class="card">
   <select id="time">
     <option value="1">1 Min</option>
     <option value="3">3 Min</option>
     <option value="5">5 Min</option>
-  </select>  <h3 id="signal">Start Engine</h3>
+  </select>
+  <button onclick="start()">Start Scanner</button>
+</div><div class="card">
+  <h3 id="signal">WAIT...</h3>
   <p id="pair"></p>
-  <p id="info"></p>
-  <p id="timer"></p><button onclick="startAuto()">Start PRO+ Scanner</button>
-
-</div><script>
+  <p id="score"></p>
+  <p id="trend"></p>
+  <p id="psychology"></p>
+</div><div class="card">
+  <h4>📊 System Info</h4>
+  <p id="timer"></p>
+</div></div><script>
 const API_KEY = "4a3eacedc8fa46448e62978e993c0422";
 
-const PAIRS = ["EUR/USD","GBP/USD","USD/JPY","AUD/USD","USD/CAD","EUR/JPY"];
+const PAIRS = ["EUR/USD","GBP/USD","USD/JPY","AUD/USD","USD/CAD"];
 
-let intervalId;
+let interval;
 
-if(Notification.permission !== "granted"){
-  Notification.requestPermission();
-}
-
-async function fetchData(pair){
-  let url = `https://api.twelvedata.com/time_series?symbol=${pair}&interval=1min&outputsize=120&apikey=${API_KEY}`;
+async function getData(pair){
+  let url = `https://api.twelvedata.com/time_series?symbol=${pair}&interval=1min&outputsize=100&apikey=${API_KEY}`;
   let res = await fetch(url);
   let data = await res.json();
   if(!data.values) return null;
@@ -58,91 +62,203 @@ function rsi(data){
 
 function sr(data){
   return {
-    support: Math.min(...data.slice(-30)),
-    resistance: Math.max(...data.slice(-30))
+    s: Math.min(...data.slice(-20)),
+    r: Math.max(...data.slice(-20))
   };
 }
 
-function liquidity(data){
-  let last=data[data.length-1];
-  let prev=data[data.length-2];
-
-  if(last>Math.max(...data.slice(-10)) && last<prev) return "SELL";
-  if(last<Math.min(...data.slice(-10)) && last>prev) return "BUY";
-  return null;
-}
-
 async function scan(){
-  let best=null;
-
   for(let pair of PAIRS){
-    let d=await fetchData(pair);
+    let d = await getData(pair);
     if(!d) continue;
 
-    let last=d[d.length-1];
-    let prev=d[d.length-2];
+    let last = d[d.length-1];
+    let prev = d[d.length-2];
 
-    let e20=ema(d,20);
-    let e50=ema(d,50);
-    let r=rsi(d);
-    let zone=sr(d);
-    let liq=liquidity(d);
+    let e20 = ema(d,20);
+    let e50 = ema(d,50);
+    let trend = e20>e50 ? "UPTREND" : "DOWNTREND";
 
-    let score=0;
+    let r = rsi(d);
+    let zone = sr(d);
 
-    let up=e20>e50;
-    let down=e20<e50;
+    let score = 0;
 
-    if(up) score++;
-    if(down) score++;
+    if(e20>e50) score++;
+    if(e20<e50) score++;
     if(r>40 && r<60) score++;
 
-    if(Math.abs(last-zone.support)<0.0005) score+=2;
-    if(Math.abs(last-zone.resistance)<0.0005) score+=2;
+    if(Math.abs(last-zone.s)<0.0005) score+=2;
+    if(Math.abs(last-zone.r)<0.0005) score+=2;
 
-    if(liq) score+=2;
+    let body = Math.abs(last-prev);
 
-    if(up && last>prev) score++;
-    if(down && last<prev) score++;
+    let psychology = "Weak";
+
+    if(body>0.0003){
+      score++;
+      psychology = "Strong Momentum";
+    }
+
+    if(body<0.0001){
+      continue;
+    }
 
     if(score>=5){
-      best={pair,dir: up?"BUY":"SELL",score};
-      break;
+      show(pair,trend,last>prev?"BUY":"SELL",score,psychology);
+      return;
     }
   }
 
-  if(best){
-    show(best.pair,best.dir,best.score);
-  }else{
-    document.getElementById("signal").innerHTML="⚠️ WAIT";
-  }
+  document.getElementById("signal").innerHTML="⚠️ WAIT";
 }
 
-function show(pair,dir,score){
+function show(pair,trend,dir,score,psych){
   let s=document.getElementById("signal");
-  s.innerHTML=dir==="BUY"?"🟢 BUY":"🔴 SELL";
-  s.className=dir==="BUY"?"buy":"sell";
+  s.innerHTML = dir==="BUY"?"🟢 BUY":"🔴 SELL";
+  s.className = dir==="BUY"?"buy":"sell";
 
   document.getElementById("pair").innerHTML="Pair: "+pair;
-  document.getElementById("info").innerHTML="Power Score: "+score+"/8";
-
-  if(Notification.permission==="granted"){
-    new Notification("💣 PRO+ SIGNAL",{body:pair+" → "+dir});
-  }
+  document.getElementById("score").innerHTML="Score: "+score;
+  document.getElementById("trend").innerHTML="Trend: "+trend;
+  document.getElementById("psychology").innerHTML="Candle: "+psych;
 }
 
-function startAuto(){
-  clearInterval(intervalId);
-  let t=parseInt(document.getElementById("time").value)*60;
+function start(){
+  clearInterval(interval);
+  let t = document.getElementById("time").value*60;
 
   scan();
   let left=t;
 
-  intervalId=setInterval(()=>{
+  interval=setInterval(()=>{
     left--;
-    document.getElementById("timer").innerHTML="Next: "+left+"s";
+    document.getElementById("timer").innerHTML="Next scan: "+left+"s";
     if(left<=0){scan();left=t;}
   },1000);
+}
+
+
+// 🔥 ADVANCED PRICE ACTION ADDITIONS
+
+function detectBOS(data){
+  let recentHigh = Math.max(...data.slice(-10));
+  let prevHigh = Math.max(...data.slice(-20,-10));
+  if(recentHigh > prevHigh) return "BULLISH BOS";
+
+  let recentLow = Math.min(...data.slice(-10));
+  let prevLow = Math.min(...data.slice(-20,-10));
+  if(recentLow < prevLow) return "BEARISH BOS";
+
+  return "NO BOS";
+}
+
+function detectOrderBlock(data){
+  let last = data[data.length-1];
+  let prev = data[data.length-2];
+
+  if(prev > last) return "Bearish OB";
+  if(prev < last) return "Bullish OB";
+  return "None";
+}
+
+function detectFVG(data){
+  let a = data[data.length-3];
+  let b = data[data.length-2];
+  let c = data[data.length-1];
+
+  if(a < b && b < c) return "Bullish FVG";
+  if(a > b && b > c) return "Bearish FVG";
+
+  return "None";
+}
+
+// integrate into show
+let bosEl = document.createElement("p");
+let obEl = document.createElement("p");
+let fvgEl = document.createElement("p");
+
+function enhanceDisplay(data){
+  let bos = detectBOS(data);
+  let ob = detectOrderBlock(data);
+  let fvg = detectFVG(data);
+
+  bosEl.innerHTML = "BOS: " + bos;
+  obEl.innerHTML = "Order Block: " + ob;
+  fvgEl.innerHTML = "FVG: " + fvg;
+
+  document.querySelector(".container").appendChild(bosEl);
+  document.querySelector(".container").appendChild(obEl);
+  document.querySelector(".container").appendChild(fvgEl);
+}
+
+// modify scan call to include enhance
+let oldScan = scan;
+scan = async function(){
+  for(let pair of PAIRS){
+    let d = await getData(pair);
+    if(!d) continue;
+
+    enhanceDisplay(d);
+
+    let last = d[d.length-1];
+    let prev = d[d.length-2];
+
+    let e20 = ema(d,20);
+    let e50 = ema(d,50);
+    let trend = e20>e50 ? "UPTREND" : "DOWNTREND";
+
+    let r = rsi(d);
+    let zone = sr(d);
+
+    let score = 0;
+
+    if(e20>e50) score++;
+    if(e20<e50) score++;
+    if(r>40 && r<60) score++;
+
+    if(Math.abs(last-zone.s)<0.0005) score+=2;
+    if(Math.abs(last-zone.r)<0.0005) score+=2;
+
+    let body = Math.abs(last-prev);
+
+    let psychology = "Weak";
+
+    if(body>0.0003){
+      score++;
+      psychology = "Strong Momentum";
+    }
+
+    if(body<0.0001){
+      continue;
+    }
+
+    if(score>=5){
+      show(pair,trend,last>prev?"BUY":"SELL",score,psychology);
+      return;
+    }
+  }
+
+  document.getElementById("signal").innerHTML="⚠️ WAIT";
+}
+
+</script><!-- 📊 LIVE CHART (TradingView) --><div class="container">
+  <div class="card">
+    <h4>📊 Live Chart</h4>
+    <iframe id="chartFrame" src="https://s.tradingview.com/widgetembed/?symbol=FX:EURUSD&interval=1&theme=dark" width="100%" height="400" frameborder="0"></iframe>
+  </div>
+</div><script>
+// 🔄 Change chart based on selected pair
+function updateChart(pair){
+  let symbol = pair.replace("/","");
+  document.getElementById("chartFrame").src = `https://s.tradingview.com/widgetembed/?symbol=FX:${symbol}&interval=1&theme=dark`;
+}
+
+// modify show function to update chart
+let oldShow = show;
+show = function(pair,trend,dir,score,psych){
+  oldShow(pair,trend,dir,score,psych);
+  updateChart(pair);
 }
 </script></body>
 </html>
