@@ -11,90 +11,39 @@
     .neutral { color:#eab308; font-size:18px; }
   </style>
 </head>
-<body><h2>💣 Ultimate Forex Signal</h2><div class="box">
-  <select id="pair">
-    <option>EUR/USD</option>
-    <option>GBP/USD</option>
-    <option>USD/JPY</option>
-  </select>  <select id="time">
+<body><h2>💣 Ultimate Forex Signal (Auto Scanner)</h2><div class="box">
+  <select id="time">
     <option value="1">1 Min</option>
-    <option value="2">2 Min</option>
     <option value="3">3 Min</option>
     <option value="5">5 Min</option>
   </select>  <h3 id="signal">Click Start</h3>
+  <p id="pair"></p>
   <p id="score"></p>
-  <p id="timer"></p><button onclick="startAuto()">Start Auto Signal</button>
+  <p id="timer"></p><button onclick="startAuto()">Start Auto Scanner</button>
 
 </div><script>
-const API_KEY  = "4a3eacedc8fa46448e62978e993c0422";
+const API_KEY = "4a3eacedc8fa46448e62978e993c0422";
+
+const PAIRS = [
+  "EUR/USD","GBP/USD","USD/JPY","AUD/USD","USD/CAD",
+  "USD/CHF","NZD/USD","EUR/JPY","GBP/JPY","EUR/GBP"
+];
+
 let intervalId;
 
-async function getSignal(){
-  let pair = document.getElementById("pair").value;
-  let url = `https://api.twelvedata.com/time_series?symbol=${pair}&interval=1min&outputsize=50&apikey=${API_KEY}`;
+// 🔔 Notification Permission
+if (Notification.permission !== "granted") {
+  Notification.requestPermission();
+}
 
+async function fetchData(pair){
+  let url = `https://api.twelvedata.com/time_series?symbol=${pair}&interval=1min&outputsize=50&apikey=${API_KEY}`;
   let res = await fetch(url);
   let data = await res.json();
 
-  if(!data.values){
-    document.getElementById("signal").innerHTML = "API LIMIT / ERROR";
-    return;
-  }
+  if(!data.values) return null;
 
-  let prices = data.values.reverse().map(v => parseFloat(v.close));
-
-  let ema20 = calcEMA(prices,20);
-  let ema50 = calcEMA(prices,50);
-  let rsi = calcRSI(prices);
-
-  let last = prices[prices.length-1];
-  let prev = prices[prices.length-2];
-
-  let score = 0;
-  let uptrend = ema20 > ema50;
-  let downtrend = ema20 < ema50;
-
-  if(uptrend) score++;
-  if(downtrend) score++;
-  if(last > prev) score++;
-  if(rsi > 40 && rsi < 60) score++;
-
-  let signalBox = document.getElementById("signal");
-
-  if(uptrend && last > prev && score>=3){
-    signalBox.innerHTML = "🟢 UP";
-    signalBox.className = "up";
-  }
-  else if(downtrend && last < prev && score>=3){
-    signalBox.innerHTML = "🔴 DOWN";
-    signalBox.className = "down";
-  }
-  else{
-    signalBox.innerHTML = "⚠️ NO TRADE";
-    signalBox.className = "neutral";
-  }
-
-  document.getElementById("score").innerHTML = `Score: ${score}/4`;
-}
-
-function startAuto(){
-  clearInterval(intervalId);
-  let min = parseInt(document.getElementById("time").value);
-  let seconds = min*60;
-
-  getSignal();
-
-  let remaining = seconds;
-
-  intervalId = setInterval(()=>{
-    remaining--;
-    document.getElementById("timer").innerHTML = `Next Signal in: ${remaining}s`;
-
-    if(remaining<=0){
-      getSignal();
-      remaining = seconds;
-    }
-  },1000);
+  return data.values.reverse().map(v => parseFloat(v.close));
 }
 
 function calcEMA(data, period){
@@ -114,6 +63,78 @@ function calcRSI(data){
   }
   let rs=gains/(losses||1);
   return 100-(100/(1+rs));
+}
+
+async function scanMarket(){
+  for(let pair of PAIRS){
+    let prices = await fetchData(pair);
+    if(!prices) continue;
+
+    let ema20 = calcEMA(prices,20);
+    let ema50 = calcEMA(prices,50);
+    let rsi = calcRSI(prices);
+
+    let last = prices[prices.length-1];
+    let prev = prices[prices.length-2];
+
+    let score = 0;
+    let uptrend = ema20 > ema50;
+    let downtrend = ema20 < ema50;
+
+    if(uptrend) score++;
+    if(downtrend) score++;
+    if(last > prev) score++;
+    if(rsi > 35 && rsi < 65) score++;
+
+    if(uptrend && last > prev && score>=2){
+      showSignal(pair,"UP",score);
+      return;
+    }
+    else if(downtrend && last < prev && score>=2){
+      showSignal(pair,"DOWN",score);
+      return;
+    }
+  }
+
+  document.getElementById("signal").innerHTML = "⚠️ NO TRADE";
+}
+
+function showSignal(pair,direction,score){
+  let signalBox = document.getElementById("signal");
+  let pairBox = document.getElementById("pair");
+
+  signalBox.innerHTML = direction === "UP" ? "🟢 UP" : "🔴 DOWN";
+  signalBox.className = direction === "UP" ? "up" : "down";
+
+  pairBox.innerHTML = `Pair: ${pair}`;
+  document.getElementById("score").innerHTML = `Score: ${score}/4`;
+
+  // 🔔 Notification
+  if(Notification.permission === "granted"){
+    new Notification("📊 Signal Alert",{
+      body: `${pair} → ${direction}`
+    });
+  }
+}
+
+function startAuto(){
+  clearInterval(intervalId);
+  let min = parseInt(document.getElementById("time").value);
+  let seconds = min*60;
+
+  scanMarket();
+
+  let remaining = seconds;
+
+  intervalId = setInterval(()=>{
+    remaining--;
+    document.getElementById("timer").innerHTML = `Next Scan in: ${remaining}s`;
+
+    if(remaining<=0){
+      scanMarket();
+      remaining = seconds;
+    }
+  },1000);
 }
 </script></body>
 </html>
