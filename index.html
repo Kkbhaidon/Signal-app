@@ -1,130 +1,129 @@
 <!DOCTYPE html><html>
 <head>
-  <title>🚀 PRO++ AI SIGNAL SYSTEM</title>
+  <title>🚀 ULTRA SNIPER SYSTEM</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
-    body { background:#020617; color:white; font-family:Arial; margin:0; }
-    .header { padding:15px; background:#0f172a; text-align:center; font-size:20px; }
-    .container { padding:15px; }
-    .card { background:#0f172a; padding:15px; margin-bottom:10px; border-radius:12px; }
+    body { background:#020617; color:white; font-family:Arial; }
+    .card { background:#0f172a; padding:15px; margin:10px; border-radius:10px; }
     .buy { color:#22c55e; }
     .sell { color:#ef4444; }
   </style>
 </head>
-<body><div class="header">💣 AI + AUTO COMPOUND SYSTEM</div><div class="container"><div class="card">
-  <button onclick="start()">Start AI Scanner</button>
+<body><div class="card">
+  <button onclick="start()">💣 Start ULTRA SNIPER</button>
 </div><div class="card">
   <h3 id="signal">WAIT...</h3>
-  <p id="pair"></p>
-  <p id="score"></p>
-  <p id="stats"></p>
-  <p id="balance"></p>
-</div></div><script>
+  <p id="info"></p>
+</div><script>
 const API_KEY = "4a3eacedc8fa46448e62978e993c0422";
-
-// ✅ YOUR TELEGRAM CONNECTED
 const BOT_TOKEN = "8276519624:AAHCboXuosrJCLcqQi6ZP4f0MT1xY7voPuk";
 const CHAT_ID = "741726963";
 
-let wins = 0, losses = 0;
-let balance = 10;
-let tradeAmount = 1;
-let lastSignal = null;
+const PAIRS = [
+  "EUR/USD",
+  "GBP/USD",
+  "USD/JPY",
+  "AUD/USD",
+  "USD/CAD",
+  "EUR/JPY"
+];
+
+let lastSignalTime = 0;
 
 function sendTelegram(msg){
-  fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage?chat_id=${CHAT_ID}&text=${encodeURIComponent(msg)}`);
+ fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage?chat_id=${CHAT_ID}&text=${encodeURIComponent(msg)}`);
 }
 
 async function getData(pair){
-  let url = `https://api.twelvedata.com/time_series?symbol=${pair}&interval=1min&outputsize=50&apikey=${API_KEY}`;
-  let res = await fetch(url);
-  let data = await res.json();
-  if(!data.values) return null;
-  return data.values.reverse().map(v=>parseFloat(v.close));
+ let url = `https://api.twelvedata.com/time_series?symbol=${pair}&interval=1min&outputsize=60&apikey=${API_KEY}`;
+ let res = await fetch(url);
+ let data = await res.json();
+ if(!data.values) return null;
+ return data.values.reverse().map(v=>parseFloat(v.close));
 }
 
 function ema(data,p){
-  let k=2/(p+1), e=data[0];
-  for(let i=1;i<data.length;i++) e=data[i]*k+e*(1-k);
-  return e;
+ let k=2/(p+1), e=data[0];
+ for(let i=1;i<data.length;i++) e=data[i]*k+e*(1-k);
+ return e;
 }
 
-function updateUI(){
-  document.getElementById("stats").innerHTML = `Win: ${wins} | Loss: ${losses}`;
-  document.getElementById("balance").innerHTML = `Balance: $${balance.toFixed(2)} | Trade: $${tradeAmount.toFixed(2)}`;
+function fakeBreakout(data){
+ let last=data[data.length-1];
+ let prev=data[data.length-2];
+ let high=Math.max(...data.slice(-6));
+ let low=Math.min(...data.slice(-6));
+
+ if(last>high && last<prev) return true;
+ if(last<low && last>prev) return true;
+ return false;
 }
 
-function AIAdjust(){
-  let total = wins + losses;
-  if(total < 5) return;
-
-  let winRate = (wins / total) * 100;
-
-  if(winRate > 70){
-    tradeAmount *= 1.2;
-  } else if(winRate < 50){
-    tradeAmount *= 0.8;
-  }
-
-  if(tradeAmount < 1) tradeAmount = 1;
+function strongCandle(data){
+ let last=data[data.length-1];
+ let prev=data[data.length-2];
+ return Math.abs(last-prev) > 0.0004;
 }
 
-function evaluate(price){
-  if(!lastSignal) return;
-
-  let win = (lastSignal.dir === "BUY" && price > lastSignal.entry) ||
-            (lastSignal.dir === "SELL" && price < lastSignal.entry);
-
-  if(win){
-    wins++;
-    balance += tradeAmount * 0.8;
-  } else {
-    losses++;
-    balance -= tradeAmount;
-  }
-
-  AIAdjust();
-  updateUI();
-  lastSignal = null;
+function higherTimeframeConfirm(data){
+ let ema50=ema(data,50);
+ let ema20=ema(data,20);
+ return ema20 > ema50 ? "BUY" : "SELL";
 }
 
 async function scan(){
-  let now = new Date();
-  if(now.getSeconds() !== 0) return;
+ let now=new Date();
+ let sec=now.getSeconds();
 
-  let pair = "EUR/USD";
-  let d = await getData(pair);
-  if(!d) return;
+ // 🎯 ultra sniper window
+ if(sec < 55) return;
 
-  let last = d[d.length-1];
-  let prev = d[d.length-2];
+ if(Date.now() - lastSignalTime < 60000) return;
 
-  evaluate(last);
+ let bestSignal=null;
 
-  let e20 = ema(d,20);
-  let e50 = ema(d,50);
+ for(let pair of PAIRS){
+   let d=await getData(pair);
+   if(!d) continue;
 
-  let score = 0;
-  if(e20>e50) score++;
-  if(e20<e50) score++;
-  if(Math.abs(last-prev)>0.0003) score++;
+   let last=d[d.length-1];
+   let prev=d[d.length-2];
 
-  if(score>=2){
-    let dir = last>prev ? "BUY" : "SELL";
+   let trend = higherTimeframeConfirm(d);
+   let direction = last>prev ? "BUY" : "SELL";
 
-    document.getElementById("signal").innerHTML = dir;
-    document.getElementById("pair").innerHTML = pair;
-    document.getElementById("score").innerHTML = "Score: "+score;
+   let score=0;
 
-    lastSignal = {dir:dir, entry:last};
+   // double confirmation
+   if(trend===direction) score+=2;
 
-    sendTelegram(`💣 AI SIGNAL\n${pair} ${dir}\nTrade: $${tradeAmount.toFixed(2)}`);
-  }
+   // strong candle
+   if(strongCandle(d)) score+=2;
+
+   // avoid fake breakout
+   if(!fakeBreakout(d)) score+=2;
+
+   // direction consistency
+   if(direction === (last>prev?"BUY":"SELL")) score++;
+
+   if(score >=6){
+     bestSignal = {pair, direction, score};
+     break;
+   }
+ }
+
+ if(bestSignal){
+   document.getElementById("signal").innerHTML = "💣 ULTRA: " + bestSignal.direction;
+   document.getElementById("info").innerHTML = `Pair: ${bestSignal.pair} | Score: ${bestSignal.score}`;
+
+   lastSignalTime = Date.now();
+
+   sendTelegram(`💣 ULTRA SNIPER\n${bestSignal.pair} ${bestSignal.direction}\nScore: ${bestSignal.score}\nOnly High Probability`);
+ }
 }
 
 function start(){
-  setInterval(scan,1000);
-  updateUI();
+ setInterval(scan,1000);
 }
 </script></body>
 </html>
