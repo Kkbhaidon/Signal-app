@@ -1,0 +1,119 @@
+<!DOCTYPE html><html>
+<head>
+  <title>Ultimate Forex Signal Web</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { font-family: Arial; text-align:center; background:#0f172a; color:white; }
+    .box { margin-top:30px; padding:20px; border-radius:15px; background:#1e293b; }
+    button, select { padding:10px 14px; font-size:15px; border:none; border-radius:10px; margin:5px; }
+    .up { color:#22c55e; font-size:22px; }
+    .down { color:#ef4444; font-size:22px; }
+    .neutral { color:#eab308; font-size:18px; }
+  </style>
+</head>
+<body><h2>💣 Ultimate Forex Signal</h2><div class="box">
+  <select id="pair">
+    <option>EUR/USD</option>
+    <option>GBP/USD</option>
+    <option>USD/JPY</option>
+  </select>  <select id="time">
+    <option value="1">1 Min</option>
+    <option value="2">2 Min</option>
+    <option value="3">3 Min</option>
+    <option value="5">5 Min</option>
+  </select>  <h3 id="signal">Click Start</h3>
+  <p id="score"></p>
+  <p id="timer"></p><button onclick="startAuto()">Start Auto Signal</button>
+
+</div><script>
+const API_KEY = "YOUR_TWELVEDATA_API_KEY";
+let intervalId;
+
+async function getSignal(){
+  let pair = document.getElementById("pair").value;
+  let url = `https://api.twelvedata.com/time_series?symbol=${pair}&interval=1min&outputsize=50&apikey=${API_KEY}`;
+
+  let res = await fetch(url);
+  let data = await res.json();
+
+  if(!data.values){
+    document.getElementById("signal").innerHTML = "API LIMIT / ERROR";
+    return;
+  }
+
+  let prices = data.values.reverse().map(v => parseFloat(v.close));
+
+  let ema20 = calcEMA(prices,20);
+  let ema50 = calcEMA(prices,50);
+  let rsi = calcRSI(prices);
+
+  let last = prices[prices.length-1];
+  let prev = prices[prices.length-2];
+
+  let score = 0;
+  let uptrend = ema20 > ema50;
+  let downtrend = ema20 < ema50;
+
+  if(uptrend) score++;
+  if(downtrend) score++;
+  if(last > prev) score++;
+  if(rsi > 40 && rsi < 60) score++;
+
+  let signalBox = document.getElementById("signal");
+
+  if(uptrend && last > prev && score>=3){
+    signalBox.innerHTML = "🟢 UP";
+    signalBox.className = "up";
+  }
+  else if(downtrend && last < prev && score>=3){
+    signalBox.innerHTML = "🔴 DOWN";
+    signalBox.className = "down";
+  }
+  else{
+    signalBox.innerHTML = "⚠️ NO TRADE";
+    signalBox.className = "neutral";
+  }
+
+  document.getElementById("score").innerHTML = `Score: ${score}/4`;
+}
+
+function startAuto(){
+  clearInterval(intervalId);
+  let min = parseInt(document.getElementById("time").value);
+  let seconds = min*60;
+
+  getSignal();
+
+  let remaining = seconds;
+
+  intervalId = setInterval(()=>{
+    remaining--;
+    document.getElementById("timer").innerHTML = `Next Signal in: ${remaining}s`;
+
+    if(remaining<=0){
+      getSignal();
+      remaining = seconds;
+    }
+  },1000);
+}
+
+function calcEMA(data, period){
+  let k=2/(period+1);
+  let ema=data[0];
+  for(let i=1;i<data.length;i++){
+    ema=data[i]*k+ema*(1-k);
+  }
+  return ema;
+}
+
+function calcRSI(data){
+  let gains=0, losses=0;
+  for(let i=1;i<15;i++){
+    let diff=data[data.length-i]-data[data.length-i-1];
+    if(diff>0) gains+=diff; else losses-=diff;
+  }
+  let rs=gains/(losses||1);
+  return 100-(100/(1+rs));
+}
+</script></body>
+</html>
